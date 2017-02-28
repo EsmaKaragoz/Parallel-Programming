@@ -10,8 +10,6 @@
 #include "const.h"
 #include <math.h>
 
-using namespace std;
-
 void scatter(const int n, double* scatter_values, int &n_local, double* &local_values, int source_rank, const MPI_Comm comm){
     //Implementation
     int p, rank;
@@ -128,13 +126,13 @@ double mpi_poly_evaluator(const double x, const int n, const double* constants, 
 
     parallel_prefix(n, values, prefix, PREFIX_OP_SUM, comm);
 
+    double result = prefix[n-1];
     if (rank == p - 1) {
-        cout << "Parallel prefix finishes!" << endl;
-        for (int k = 0; k < n; k++) {
-            cout << prefix[k] << " ";
-        }
-        cout << endl;
-        return prefix[n-1];
+        MPI_Send(&result, 1, MPI_DOUBLE, 0, 0, comm);
     }
-    return prefix[n-1];
+
+    if (rank == 0) {
+        MPI_Recv(&result, 1, MPI_DOUBLE, p-1, 0, comm, MPI_STATUS_IGNORE);
+    }
+    return result;
 }
