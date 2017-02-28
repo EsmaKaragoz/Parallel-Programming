@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
 
             print_output(v, result, broadcast_time, poly_evaltime, rank, p); //print result
         }
-        free(local_values);
+        // free(local_values);
         //----------------------------------------------------------------//
     } else {
         //------------------- run the serial version ---------------------//
