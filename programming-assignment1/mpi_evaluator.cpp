@@ -10,6 +10,8 @@
 #include "const.h"
 #include <math.h>
 
+using namespace std;
+
 void scatter(const int n, double* scatter_values, int &n_local, double* &local_values, int source_rank, const MPI_Comm comm){
     //Implementation
     int p, rank;
@@ -67,11 +69,8 @@ void parallel_prefix(const int n, const double* values, double* prefix_results, 
     MPI_Comm_rank(comm, &rank);
 
     double local = 0.0;
-    if (OP == PREFIX_OP_SUM) {
-        local = 0.0;
-    } else if (OP == PREFIX_OP_PRODUCT) {
-        local = 1.0;
-    }
+    if (OP == PREFIX_OP_SUM)          local = 0.0;
+    else if (OP == PREFIX_OP_PRODUCT) local = 1.0;
 
     double total = *(values+n-1);
     double d = log2(p);
@@ -82,22 +81,20 @@ void parallel_prefix(const int n, const double* values, double* prefix_results, 
             MPI_Send(&total, 1, MPI_DOUBLE, rank_a, 0, comm);
             MPI_Recv(&recv, 1, MPI_DOUBLE, rank_a, 0, comm, MPI_STATUS_IGNORE);
 
-            if (OP == PREFIX_OP_SUM) {
-                total += recv;
-            } else if (OP == PREFIX_OP_PRODUCT) {
-                total *= recv;
-            }
+            if (OP == PREFIX_OP_SUM)          total += recv;
+            else if (OP == PREFIX_OP_PRODUCT) total *= recv;
 
             if (rank_a < rank) {
-                if (OP == PREFIX_OP_SUM) {
-                    local += recv;
-                    for (int k = 0; k < n; k++) prefix_results[k] += local;
-                } else if (OP == PREFIX_OP_PRODUCT) {
-                    local *= recv;
-                    for (int k = 0; k < n; k++) prefix_results[k] *= local;
-                } 
+                if (OP == PREFIX_OP_SUM)          local += recv;
+                else if (OP == PREFIX_OP_PRODUCT) local *= recv;
             }
         }
+    }
+
+    if (OP == PREFIX_OP_SUM) {
+        for (int k = 0; k < n; k++) prefix_results[k] += local;
+    } else if (OP == PREFIX_OP_PRODUCT) {
+        for (int k = 0; k < n; k++) prefix_results[k] *= local;
     }
 }
 
@@ -123,16 +120,11 @@ double mpi_poly_evaluator(const double x, const int n, const double* constants, 
         values[j] = j==0? temp : values[j-1]+temp;
         prefix[j] = values[j];
     }
-
     parallel_prefix(n, values, prefix, PREFIX_OP_SUM, comm);
 
     double result = prefix[n-1];
-    if (rank == p - 1) {
-        MPI_Send(&result, 1, MPI_DOUBLE, 0, 0, comm);
-    }
+    if (rank == p - 1) MPI_Send(&result, 1, MPI_DOUBLE, 0, 0, comm);
 
-    if (rank == 0) {
-        MPI_Recv(&result, 1, MPI_DOUBLE, p-1, 0, comm, MPI_STATUS_IGNORE);
-    }
+    if (rank == 0) MPI_Recv(&result, 1, MPI_DOUBLE, p-1, 0, comm, MPI_STATUS_IGNORE);
     return result;
 }
