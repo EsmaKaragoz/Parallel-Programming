@@ -8,6 +8,10 @@
 
 double poly_evaluator(const double x, const int n, const double* constants){
     //Implementation
-
-    return 0;
+    double ans = 0, sum = 1;
+    for (int i = 0; i < n; i++) {
+        ans += sum * constants[i];
+        sum = sum * x;
+    }
+    return ans;
 }
