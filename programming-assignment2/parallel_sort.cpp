@@ -25,11 +25,11 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     MPI_Allreduce(&local_size, &total_size, 1, MPI_INT, MPI_SUM, comm);
 
     // Compute the global index of this processor
-    int quotient = total_size / p;
-    int remainder = total_size % p;
+    int q = total_size / p; // get the quotient
+    int r = total_size % p; // get the remainder
     int lo;
-    if (rank < remainder + 1) lo = (quotient + 1) * rank;
-    else lo = quotient * rank;
+    if (rank < r + 1) lo = (q + 1) * rank;
+    else lo = q * rank;
 
     // Set the random seed and uniform integer distribution
     std::default_random_engine generator(6220);
@@ -38,9 +38,9 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
 
     // Broadcast the pivot
     int root;
-    if (remainder == 0) root = k % quotient;
-    else if (k < remainder * (quotient + 1)) root = k % (quotient + 1);
-    else root = remainder + (k - remainder * (quotient + 1)) % quotient;
+    if (r == 0) root = k % q;
+    else if (k < r * (q + 1)) root = k % (q + 1);
+    else root = r + (k - r * (q + 1)) % q;
 
     int pivot = 0;
     if (k >= lo && k < lo + local_size)
