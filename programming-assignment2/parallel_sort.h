@@ -10,6 +10,8 @@
 #define PARALLEL_SORT_H
 
 #include <mpi.h>
+#include <random>
+#include <algorithm>
 
 /**
  * @brief   Parallel, distributed sorting over all processors in `comm`. Each
@@ -24,7 +26,7 @@
  * @param comm  The MPI communicator with the processors participating in the
  *              sorting.
  */
-void parallel_sort(int * begin, int* end, MPI_Comm comm);
+void parallel_sort(int* begin, int* end, MPI_Comm comm);
 
 
 /*********************************************************************
