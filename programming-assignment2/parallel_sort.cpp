@@ -82,9 +82,14 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     transfer(begin, cutpoint, small_size, large_size, small_sum, large_sum, comm);
 
     /*********************************************************************
-     *               Split the p processors into two parts               *
+     *            Create new communicator and recursively sort           *
      *********************************************************************/
+    MPI_Comm new_comm;
+    MPI_Comm_split(comm, (rank < cutpoint), rank, &new_comm);
+    parallel_sort(begin, end, new_comm);
+    MPI_Comm_free(&new_comm);
 
+    return;
 }
 
 
