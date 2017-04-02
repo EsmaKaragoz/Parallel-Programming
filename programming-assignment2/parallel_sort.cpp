@@ -79,7 +79,8 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     if (cutpoint == 0) cutpoint++;
     if (cutpoint == p) cutpoint--;
 
-    transfer(begin, cutpoint, small_size, large_size, small_sum, large_sum, comm);
+    int new_local_size = transfer(begin, cutpoint, small_size, large_size, small_sum, large_sum, comm);
+    end = begin + new_local_size;
 
     /*********************************************************************
      *            Create new communicator and recursively sort           *
@@ -176,12 +177,14 @@ int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int smal
         rdispls[idx] = rdispls[idx - 1] + recvcnts[idx - 1];
     }
 
-    int* rbuf = new int[new_size[rank]];
+    int local_size = new_size[rank];
+
+    int* rbuf = new int[local_size];
     MPI_Alltoallv(sbuf, sendcnts, sdispls, MPI_INTEGER, rbuf, recvcnts, rdispls, MPI_INTEGER, comm);
 
     delete [] sbuf;
-    sbuf = new int[new_size[rank]];
-    for (int idx = 0; idx < new_size[rank]; idx++) {
+    sbuf = new int[local_size]
+    for (int idx = 0; idx < local_size; idx++) {
         sbuf[i] = rbuf[i];
     }
     delete [] rbuf;
@@ -191,4 +194,6 @@ int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int smal
     delete [] recvcnts;
     delete [] sdispls;
     delete [] rdispls;
+
+    return local_size;
 }

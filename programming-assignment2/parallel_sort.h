@@ -37,4 +37,8 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm);
 
 // ...
 
+int partition(int* begin, int local_size, int pivot);
+
+int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int small_sum, int large_sum, MPI_Comm comm);
+
 #endif // PARALLEL_SORT_H
