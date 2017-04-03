@@ -36,21 +36,24 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     else lo = (q + 1) * r + q * (rank - r);
 
     // Set the random seed and uniform integer distribution
-    std::default_random_engine generator(6220);
-    std::uniform_int_distribution<int> distribution(0, total_size);
-    int k = distribution(generator);
+    srand(6220);
+    int k = rand() % total_size; 
+
+    // std::cout << "Rank: " << rank << " and the range is [" << lo << ", " << lo + local_size <<  ") and pivot: " << k << std::endl;
 
     // Broadcast the pivot
     int root;
     if (r == 0) root = k % q;
-    else if (k < r * (q + 1)) root = k % (q + 1);
-    else root = r + (k - r * (q + 1)) % q;
+    else if (k < r * (q + 1)) root = k / (q + 1);
+    else root = r + (k - r * (q + 1)) / q;
 
     int pivot = 0;
     if (k >= lo && k < lo + local_size)
     	pivot = begin[k - lo];
     MPI_Bcast(&pivot, 1, MPI_INT, root, comm);
     // MPI_Allreduce(&pivot, &pivot, 1, MPI_INT, MPI_SUM, comm);
+
+    std::cout << "Rank: " << rank << " and pivot: " << pivot << std::endl;
 
     /*********************************************************************
      *             Partition array locally on each processor             *
@@ -59,6 +62,8 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     int boundary = partition(begin, local_size, pivot); 
     // Get the numbers of small and large subarray
     int small = boundary + 1, large = local_size - small;
+
+    std::cout << "Rank: " << rank << " and boundary: " << boundary << std::endl;
 
     /*********************************************************************
      *       Gather the info of two subarrays among all processors       *
@@ -73,13 +78,16 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     int small_sum = std::accumulate(small_size.begin(), small_size.end(), 0);
     int large_sum = std::accumulate(large_size.begin(), large_size.end(), 0);
 
+    std::cout << "Rank: " << rank << " and small_sum: " << small_sum << std::endl;
+    std::cout << "Rank: " << rank << " and large_sum: " << large_sum << std::endl;
+
     /* Get the cut point of p processors, small number will be sent to 0, 1, ..., 
      * cutpoint - 1 processors, large number will be sent to the rest processors */
     int cutpoint = p * small_sum / (small_sum + large_sum);
     if (cutpoint == 0) cutpoint++;
     if (cutpoint == p) cutpoint--;
 
-    int new_local_size = transfer(begin, cutpoint, small_size, large_size, small_sum, large_sum, comm);
+    int new_local_size = transfer(&begin[0], cutpoint, &small_size[0], &large_size[0], small_sum, large_sum, comm);
     end = begin + new_local_size;
 
     /*********************************************************************
@@ -183,9 +191,9 @@ int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int smal
     MPI_Alltoallv(sbuf, sendcnts, sdispls, MPI_INTEGER, rbuf, recvcnts, rdispls, MPI_INTEGER, comm);
 
     delete [] sbuf;
-    sbuf = new int[local_size]
+    sbuf = new int[local_size];
     for (int idx = 0; idx < local_size; idx++) {
-        sbuf[i] = rbuf[i];
+        sbuf[idx] = rbuf[idx];
     }
     delete [] rbuf;
 
