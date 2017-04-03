@@ -17,6 +17,8 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
 
     if (p == 1) {
         std::sort(begin, end);
+        for (int i = 0; i < end - begin; i++) std::cout << begin[i] << " ";
+        std::cout << std::endl;
         return;
     }
 
@@ -41,7 +43,7 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
 
     // Broadcast the pivot
     int root;
-    if (r == 0) root = k % q;
+    if (r == 0) root = k / q;
     else if (k < r * (q + 1)) root = k / (q + 1);
     else root = r + (k - r * (q + 1)) / q;
 
@@ -53,23 +55,21 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     /*********************************************************************
      *             Partition array locally on each processor             *
      *********************************************************************/
-    // index of small less than or equal to boundary
-    int boundary = partition(&begin[0], local_size, pivot); 
-    // Get the numbers of small and large subarray
+    int boundary = partition(begin, local_size, pivot);
     int small = boundary + 1, large = local_size - small;
 
     /*********************************************************************
      *       Gather the info of two subarrays among all processors       *
      *********************************************************************/
-    int *small_size = new int[p], *large_size = new int[p];
+    std::vector<int> small_size(p), large_size(p);
     MPI_Allgather(&small, 1, MPI_INT, &small_size[0], 1, MPI_INT, comm);
     MPI_Allgather(&large, 1, MPI_INT, &large_size[0], 1, MPI_INT, comm);
 
     /*********************************************************************
      *          Transfer the data using All-to-all communication         *
      *********************************************************************/
-    int small_sum = std::accumulate(small_size, small_size + p, 0);
-    int large_sum = std::accumulate(large_size, large_size + p, 0);
+    int small_sum = std::accumulate(small_size.begin(), small_size.end(), 0);
+    int large_sum = std::accumulate(large_size.begin(), large_size.end(), 0);
 
     /* Get the cut point of p processors, small number will be sent to 0, 1, ..., 
      * cutpoint - 1 processors, large number will be sent to the rest processors */
@@ -77,20 +77,14 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     if (cutpoint == 0) cutpoint++;
     if (cutpoint == p) cutpoint--;
 
-    int new_local_size = transfer(begin, cutpoint, small_size, large_size, small_sum, large_sum, comm);
-    end = begin + new_local_size;
-
-    for (int i = 0; i < new_local_size; ++i) {
-        std::cout << begin[i] << "(" << rank << ") ";
-    }
-    std::cout << std::endl;
+    int new_local_size = transfer(begin, cutpoint, &small_size[0], &large_size[0], small_sum, large_sum, comm);
 
     /*********************************************************************
      *            Create new communicator and recursively sort           *
      *********************************************************************/
     MPI_Comm new_comm;
     MPI_Comm_split(comm, (rank < cutpoint), rank, &new_comm);
-    parallel_sort(begin, end, new_comm);
+    parallel_sort(begin, begin + new_local_size, new_comm);
     MPI_Comm_free(&new_comm);
 
     return;
@@ -129,7 +123,7 @@ int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int smal
     // Compute the new quotient and remainder for two subset of processors, and the new local size for each processor
     int squotient = small_sum / cutpoint, sremainder = small_sum % cutpoint;
     int lquotient = large_sum / (p - cutpoint), lremainder = large_sum % (p - cutpoint) + cutpoint;
-    int *new_size = new int[p], *reference = new int[p]; 
+    std::vector<int> new_size(p, 0), reference(p, 0); 
     for (int i = 0; i < p; i++) {
         if (i < cutpoint) new_size[i] = (i < sremainder)? squotient + 1 : squotient;
         else new_size[i] = (i < lremainder)? lquotient + 1: lquotient;
@@ -137,7 +131,7 @@ int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int smal
     }
 
     // Compute the corresponding information for all-to-all communication
-    int *sendcnts = new int[p], *recvcnts = new int[p];
+    std::vector<int> sendcnts(p, 0), recvcnts(p, 0);
     int j = 0, k = cutpoint; // denote the current recieving processors
     for (int i = 0; i < p; i++) {
         // Fill the small part
@@ -163,8 +157,7 @@ int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int smal
         }
     }
 
-    int *sdispls = new int[p], *rdispls = new int[p];
-    sdispls[0] = 0; rdispls[0] = 0;
+    std::vector<int> sdispls(p, 0), rdispls(p, 0);
     for (int i = 1; i < p; i++) {
         sdispls[i] = sdispls[i - 1] + sendcnts[i - 1];
         rdispls[i] = rdispls[i - 1] + recvcnts[i - 1];
@@ -173,21 +166,13 @@ int transfer(int* sbuf, int cutpoint, int* small_size, int* large_size, int smal
     int new_local_size = new_size[rank];
     int *rbuf = new int[new_local_size];
 
-    MPI_Alltoallv(sbuf, sendcnts, sdispls, MPI_INTEGER, rbuf, recvcnts, rdispls, MPI_INTEGER, comm);
+    MPI_Alltoallv(sbuf, &sendcnts[0], &sdispls[0], MPI_INTEGER, rbuf, &recvcnts[0], &rdispls[0], MPI_INTEGER, comm);
 
     for (int i = 0; i < new_local_size; i++) {
         sbuf[i] = rbuf[i];
     }
 
     delete [] rbuf;
-
-    delete [] new_size;
-    delete [] reference;
-
-    delete [] sendcnts;
-    delete [] recvcnts;
-    delete [] sdispls;
-    delete [] rdispls;
 
     return new_local_size;
 }
