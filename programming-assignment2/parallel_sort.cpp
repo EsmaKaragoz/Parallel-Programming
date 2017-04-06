@@ -100,16 +100,6 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     /*********************************************************************
      *          Transfer the data using All-to-all communication         *
      *********************************************************************/
-    // std::cout << "rbuf  ";
-    // for (int i = 0; i < cur_local_size; i++) {
-    //     std::cout << rbuf[i] << "(" << rank << ") ";
-    // }
-    // std::cout << std::endl;
-    // std::cout << "begin ";
-    // for (int i = 0; i < cur_local_size; i++) {
-    //     std::cout << begin[i] << "(" << rank << ") ";
-    // }
-    // std::cout << std::endl;
     std::vector<int> tmp_sendcnts(p, 0), tmp_recvcnts(p, 0), tmp_sdispls(p, 0), tmp_rdispls(p, 0);
     std::vector<int> tmp_reference(cur_size);
     for (int i = 0, j = 0; i < p; i++) {
@@ -127,11 +117,7 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
 
     // All-to-to communication
     MPI_Alltoallv(rbuf, &tmp_sendcnts[0], &tmp_sdispls[0], MPI_INTEGER, begin, &tmp_recvcnts[0], &tmp_rdispls[0], MPI_INTEGER, comm);
-    // std::cout << "begin ";
-    // for (int i = 0; i < cur_local_size; i++) {
-    //     std::cout << begin[i] << "(" << rank << ") ";
-    // }
-    // std::cout << std::endl;
+
     delete [] rbuf;
 }
 
@@ -143,6 +129,7 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm) {
 /* Partition an array to two subarrays according to the pivot, and  
  * return the index of the largest number in the first subarrays */
 int partition(int* begin, int size, int pivot) {
+    if (size == 0) return -1;
     int i = -1, j = size;
     while (true) {
         do {
