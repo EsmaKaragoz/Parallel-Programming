@@ -134,11 +134,11 @@ int partition(int* begin, int size, int pivot) {
     while (true) {
         do {
             i++;
-        } while (begin[i] <= pivot);
+        } while (begin[i] <= pivot && i < size);
 
         do {
             j--;
-        } while (begin[j] > pivot);
+        } while (begin[j] > pivot && j > -1);
 
         if (i >= j) return j;
 

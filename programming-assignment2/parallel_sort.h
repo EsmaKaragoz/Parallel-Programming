@@ -37,9 +37,6 @@ void parallel_sort(int* begin, int* end, MPI_Comm comm);
  *********************************************************************/
 
 // ...
-
-int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm);
-
 int partition(int* begin, int local_size, int pivot);
 
 int compute_size(int* new_size, int cutpoint, int small_sum, int large_sum, MPI_Comm comm);
