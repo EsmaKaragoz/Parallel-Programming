@@ -10,6 +10,7 @@
 #define PARALLEL_SORT_H
 
 #include <mpi.h>
+#include <math.h>
 #include <algorithm>
 #include <numeric>
 #include <vector>

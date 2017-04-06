@@ -8,43 +8,8 @@
 
 #include "parallel_sort.h"
 
-void parallel_sort(int* begin, int* end, MPI_Comm comm) {
-    int p, rank;
-    MPI_Comm_size(comm, &p);
-    MPI_Comm_rank(comm, &rank);
-
-    int cur_size = end - begin;
-    int new_size = parallel_sort_recurrsion(begin, end, comm);
-
-    std::vector<int> cur_size_vec(p), new_size_vec(p);
-    MPI_Allgather(&cur_size, 1, MPI_INT, &cur_size_vec[0], 1, MPI_INT, comm);
-    MPI_Allgather(&new_size, 1, MPI_INT, &new_size_vec[0], 1, MPI_INT, comm);
-
-    std::vector<int> sendcnts(p, 0), recvcnts(p, 0), sdispls(p, 0), rdispls(p, 0);
-    std::vector<int> reference(cur_size_vec);
-    for (int i = 0, j = 0; i < p; i++) {
-        int send = new_size_vec[i];
-        while (send > 0) {
-            int s = (send <= reference[j])? send : reference[j];
-            if (i == rank) sendcnts[j] = s;
-            if (j == rank) recvcnts[i] = s;
-            send -= s;
-            reference[j] -= s;
-            if (reference[j] == 0) j++;
-        }
-    }
-    compute_displs(&sdispls[0], &rdispls[0], &sendcnts[0], &recvcnts[0], comm);
-
-    // All-to-to communication
-    int local = cur_size_vec[rank];
-    int* rbuf = new int[local];
-    MPI_Alltoallv(begin, &sendcnts[0], &sdispls[0], MPI_INTEGER, rbuf, &recvcnts[0], &rdispls[0], MPI_INTEGER, comm);
-    for (int i = 0; i < local; i++) begin[i] = rbuf[i];
-    delete [] rbuf;
-}
-
 // implementation of your parallel sorting
-int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm) {
+void parallel_sort(int* begin, int* end, MPI_Comm comm) {
     // Obtain the total number of processors and the rank of this processor
     int p, rank;
     MPI_Comm_size(comm, &p);
@@ -52,12 +17,12 @@ int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm) {
 
     if (p == 1) {
         std::sort(begin, end);
-        return end - begin;
+        return;
     }
 
     // Get the size of the local array, and the size of the global array
-    int local = end - begin, total;
-    MPI_Allreduce(&local, &total, 1, MPI_INT, MPI_SUM, comm);
+    int cur_local_size = end - begin, total;
+    MPI_Allreduce(&cur_local_size, &total, 1, MPI_INT, MPI_SUM, comm);
 
     /*********************************************************************
      *               Broadcast the pivot to each processor               *
@@ -71,7 +36,7 @@ int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm) {
     else lo = (q + 1) * r + q * (rank - r);
 
     // Set the random seed and uniform integer distribution
-    srand(6220);
+    srand(0);
     int k = rand() % total;
 
     // Broadcast the pivot
@@ -81,14 +46,14 @@ int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm) {
     else root = r + (k - r * (q + 1)) / q;
 
     int pivot = 0;
-    if (k >= lo && k < lo + local)
+    if (k >= lo && k < lo + cur_local_size)
     	pivot = begin[k - lo];
     MPI_Bcast(&pivot, 1, MPI_INT, root, comm);
 
     /*********************************************************************
      *             Partition array locally on each processor             *
      *********************************************************************/
-    int boundary = partition(begin, local, pivot);
+    int boundary = partition(begin, cur_local_size, pivot);
     int small = boundary + 1;
 
     /*********************************************************************
@@ -96,7 +61,7 @@ int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm) {
      *********************************************************************/
     std::vector<int> small_arr(p), cur_size(p);
     MPI_Allgather(&small, 1, MPI_INT, &small_arr[0], 1, MPI_INT, comm);
-    MPI_Allgather(&local, 1, MPI_INT, &cur_size[0], 1, MPI_INT, comm);
+    MPI_Allgather(&cur_local_size, 1, MPI_INT, &cur_size[0], 1, MPI_INT, comm);
 
     /*********************************************************************
      *          Transfer the data using All-to-all communication         *
@@ -105,7 +70,7 @@ int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm) {
 
     /* Get the cut point of p processors, small number will be sent to 0, 1, ..., 
      * cutpoint - 1 processors, large number will be sent to the rest processors */
-    int cutpoint = p * small_sum / total;
+    int cutpoint = ceil(1.0 * p * small_sum / total);
     if (cutpoint == 0) cutpoint++;
     if (cutpoint == p) cutpoint--;
 
@@ -120,21 +85,54 @@ int parallel_sort_recurrsion(int* begin, int* end, MPI_Comm comm) {
     compute_displs(&sdispls[0], &rdispls[0], &sendcnts[0], &recvcnts[0], comm);
 
     // All-to-to communication
-    local = new_size[rank];
-    int *rbuf = new int[local];
+    int new_local_size = new_size[rank];
+    int *rbuf = new int[new_local_size];
     MPI_Alltoallv(begin, &sendcnts[0], &sdispls[0], MPI_INTEGER, rbuf, &recvcnts[0], &rdispls[0], MPI_INTEGER, comm);
-    for (int i = 0; i < local; i++) begin[i] = rbuf[i];
-    delete [] rbuf;
 
     /*********************************************************************
      *            Create new communicator and recursively sort           *
      *********************************************************************/
     MPI_Comm new_comm;
     MPI_Comm_split(comm, (rank < cutpoint), rank, &new_comm);
-    int final_size = parallel_sort_recurrsion(begin, begin + local, new_comm);
+    parallel_sort(rbuf, rbuf + new_local_size, new_comm);
     MPI_Comm_free(&new_comm);
 
-    return final_size;
+    /*********************************************************************
+     *          Transfer the data using All-to-all communication         *
+     *********************************************************************/
+    // std::cout << "rbuf  ";
+    // for (int i = 0; i < cur_local_size; i++) {
+    //     std::cout << rbuf[i] << "(" << rank << ") ";
+    // }
+    // std::cout << std::endl;
+    // std::cout << "begin ";
+    // for (int i = 0; i < cur_local_size; i++) {
+    //     std::cout << begin[i] << "(" << rank << ") ";
+    // }
+    // std::cout << std::endl;
+    std::vector<int> tmp_sendcnts(p, 0), tmp_recvcnts(p, 0), tmp_sdispls(p, 0), tmp_rdispls(p, 0);
+    std::vector<int> tmp_reference(cur_size);
+    for (int i = 0, j = 0; i < p; i++) {
+        int send = new_size[i];
+        while (send > 0) {
+            int s = (send <= tmp_reference[j])? send : tmp_reference[j];
+            if (i == rank) tmp_sendcnts[j] = s;
+            if (j == rank) tmp_recvcnts[i] = s;
+            send -= s;
+            tmp_reference[j] -= s;
+            if (tmp_reference[j] == 0) j++;
+        }
+    }
+    compute_displs(&tmp_sdispls[0], &tmp_rdispls[0], &tmp_sendcnts[0], &tmp_recvcnts[0], comm);
+
+    // All-to-to communication
+    MPI_Alltoallv(rbuf, &tmp_sendcnts[0], &tmp_sdispls[0], MPI_INTEGER, begin, &tmp_recvcnts[0], &tmp_rdispls[0], MPI_INTEGER, comm);
+    // std::cout << "begin ";
+    // for (int i = 0; i < cur_local_size; i++) {
+    //     std::cout << begin[i] << "(" << rank << ") ";
+    // }
+    // std::cout << std::endl;
+    delete [] rbuf;
 }
 
 
