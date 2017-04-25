@@ -90,8 +90,8 @@ void distribute_vector(const int n, double* input_vector, double** local_vector,
 
     }
 
-    // Free the column communicator
-    MPI_Comm_free(&comm_col);
+    // // Free the column communicator
+    // MPI_Comm_free(&comm_col);
 
     return;
 }
@@ -140,8 +140,8 @@ void gather_vector(const int n, double* local_vector, double* output_vector, MPI
 
     }
 
-    // Free the column communicator
-    MPI_Comm_free(&comm_col);
+    // // Free the column communicator
+    // MPI_Comm_free(&comm_col);
 
     return;
 }
@@ -206,8 +206,8 @@ void distribute_matrix(const int n, double* input_matrix, double** local_matrix,
 
     }
 
-    // Free the column communicator
-    MPI_Comm_free(&comm_col);
+    // // Free the column communicator
+    // MPI_Comm_free(&comm_col);
 
     // Step 2. Distribute submatrix on processors among each row
     // Create row communicators 
@@ -258,8 +258,8 @@ void distribute_matrix(const int n, double* input_matrix, double** local_matrix,
     // }
     // std::cout << "===========================" << std::endl;
 
-    // Free the column communicator
-    MPI_Comm_free(&comm_row);
+    // // Free the column communicator
+    // MPI_Comm_free(&comm_row);
 
     return;
 }
@@ -277,12 +277,11 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
     q = (int)sqrt(p);
 
     //get row and column subcommunicators
-    MPI_Comm row_comm, col_comm;
+    MPI_Comm comm_row, comm_col;
     int remain_dims[2] = {true, false};
-    MPI_Cart_sub(comm, remain_dims, &col_comm);
+    MPI_Cart_sub(comm, remain_dims, &comm_col);
     remain_dims[0] = false; remain_dims[1] = true;
-    MPI_Cart_sub(comm, remain_dims, &row_comm);
-
+    MPI_Cart_sub(comm, remain_dims, &comm_row);
 
     //get rank in the column and in the row
     int col_rank, row_rank;
@@ -290,28 +289,21 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
     MPI_Cart_coords(comm, rank, 2, coords);
     row_rank = coords[0];
     col_rank = coords[1];
-    // std::cout << "==============================="<< std::endl;
-    // std::cout << "coord is:" << row_rank <<", " << col_rank << "  sub rank is:" << temp1 <<", " << temp2 <<std::endl;
 
-     if(rank == 0)
-    {
+    if(rank == 0) {
         int count = block_decompose(n, q, rank);
         memcpy (row_vector, col_vector, count*sizeof(double));
-    }
-    else if(col_rank == 0) // sending processor
-    {
+    } else if(col_rank == 0) {
         int scount = block_decompose(n, q, row_rank);
-        MPI_Send(col_vector, scount, MPI_DOUBLE, row_rank, 0, row_comm);
-    }
-    else if(row_rank == col_rank)//receiving processor
-    {
+        MPI_Send(col_vector, scount, MPI_DOUBLE, row_rank, 0, comm_row);
+    } else if(row_rank == col_rank) {
         int rcount = block_decompose(n, q, row_rank);
-        MPI_Recv(row_vector, rcount, MPI_DOUBLE, 0, 0, row_comm, MPI_STATUS_IGNORE);
+        MPI_Recv(row_vector, rcount, MPI_DOUBLE, 0, 0, comm_row, MPI_STATUS_IGNORE);
     }
 
     //broadcast the vector within the column
     int bcount = block_decompose(n, q, col_rank);
-    MPI_Bcast(row_vector, bcount, MPI_DOUBLE, col_rank, col_comm);
+    MPI_Bcast(row_vector, bcount, MPI_DOUBLE, col_rank, comm_col);
 
 }
 
@@ -351,8 +343,8 @@ void distributed_matrix_vector_mult(const int n, double* local_A, double* local_
 
     MPI_Reduce(local_yy, local_y, nrows, MPI_DOUBLE, MPI_SUM, root_rank, comm_row);
 
-    // Free the column communicator
-    MPI_Comm_free(&comm_row);
+    // // Free the column communicator
+    // MPI_Comm_free(&comm_row);
 
     delete [] local_xx;
     delete [] local_yy;
@@ -454,9 +446,9 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
         iter++;
     }
 
-    // Free the column communicator
-    MPI_Comm_free(&comm_col);
-    MPI_Comm_free(&comm_row);
+    // // Free the column communicator
+    // MPI_Comm_free(&comm_col);
+    // MPI_Comm_free(&comm_row);
 
     delete [] local_D;
     delete [] local_R;
