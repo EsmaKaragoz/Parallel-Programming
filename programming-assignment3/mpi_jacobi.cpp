@@ -19,135 +19,91 @@
 #include <iostream>
 #include <algorithm>
 
-/*
- * TODO: Implement your solutions here
- */
 
 
-void distribute_vector(const int n, double* input_vector, double** local_vector, MPI_Comm comm) {
-
-    // Get the Cartesian topology information
+void distribute_vector(const int n, double* input_vector, double** local_vector, MPI_Comm comm)
+{
+    // Get coordinate information
     int dims[2], periods[2], coords[2];
     MPI_Cart_get(comm, 2, dims, periods, coords);
 
-    // Create column communicators 
-    MPI_Comm comm_col;
-    int remain_dims[2] = {true, false};
-    MPI_Cart_sub(comm, remain_dims, &comm_col);
 
+    // Put all (i, 0) columns into a separate comm group
+    int belongs[2] = {1, 0};
+    MPI_Comm col_comm;
+    MPI_Cart_sub(comm, belongs, &col_comm);
+
+    // Processors in (i, 0) need to receive
+    //double *dist_vector;
+
+    MPI_Barrier(comm);
+    // Processor (0, 0) scatters to (i, 0)
+    int sendcounts[dims[0]], displs[dims[0]];
     if (coords[1] == 0) {
+        (*local_vector) = new double[block_decompose(n, dims[0], coords[0])];
+        //(*local_vector) = dist_vector;
 
-        // std::cout << coords[0] << " " << coords[1] << std::endl;
-        // if (coords[0] == 0 && coords[1] == 0) {
-        //     for (int i = 0; i < n; i++) {
-        //         std::cout << input_vector[i] << " ";
-        //     }
-        //     std::cout << std::endl;
-        // }
-
-        // Compute the number of elements to send to each processor
-        int* sendcounts = new int[dims[0]];
-        int* displs = new int[dims[0]];
-
+        // Sizes of local_vectors differ, so use Scatterv
+        // Calculate sendcounts and displs
         for (int i = 0; i < dims[0]; i++) {
             sendcounts[i] = block_decompose(n, dims[0], i);
         }
 
         displs[0] = 0;
         for (int i = 1; i < dims[0]; i++) {
-            displs[i] = displs[i - 1] + sendcounts[i - 1];
+            displs[i] = sendcounts[i-1] + displs[i-1];
         }
 
-        // Compute local size for processors in the first column
-        int local_size = sendcounts[coords[0]];
-        (*local_vector) = new double[local_size];
-
-        // Get the rank of root in the first column communicator
-        int root_rank;
-        int root_coords[] = {0};
-        MPI_Cart_rank(comm_col, root_coords, &root_rank);
-
-        // std::cout << root_rank << std::endl;
-        // for (int i = 0; i < dims[0]; i++) {
-        //     std::cout << sendcounts[i] << " ";
-        // }
-        // std::cout << std::endl;
-        // for (int i = 0; i < dims[0]; i++) {
-        //     std::cout << displs[i] << " ";
-        // }
-        // std::cout << std::endl;
-
-        // Scatter values to different processors
-        MPI_Scatterv(input_vector, sendcounts, displs, MPI_DOUBLE, *local_vector, local_size, MPI_DOUBLE, root_rank, comm_col);
-
-        // for (int i = 0; i < local_size; i++) {
-        //     std::cout << (*local_vector)[i] << " ";
-        // }
-        // std::cout << std::endl;
-
-        delete [] sendcounts;
-        delete [] displs;
-
+        MPI_Scatterv(input_vector, sendcounts, displs, MPI_DOUBLE, *local_vector, sendcounts[coords[0]], MPI_DOUBLE, 0, col_comm);
     }
 
-    // // Free the column communicator
-    // MPI_Comm_free(&comm_col);
-
-    return;
+    MPI_Barrier(comm);
+    MPI_Comm_free(&col_comm);
 }
 
 
 // gather the local vector distributed among (i,0) to the processor (0,0)
-void gather_vector(const int n, double* local_vector, double* output_vector, MPI_Comm comm) {
-
-    // Get the Cartesian topology information
+void gather_vector(const int n, double* local_vector, double* output_vector, MPI_Comm comm)
+{
+    // Get coordinate information
     int dims[2], periods[2], coords[2];
     MPI_Cart_get(comm, 2, dims, periods, coords);
 
-    // Create column communicators 
-    MPI_Comm comm_col;
-    int remain_dims[2] = {true, false};
-    MPI_Cart_sub(comm, remain_dims, &comm_col);
+    // Put all (i, 0) columns into a separate comm group
+    int belongs[2] = {1, 0};
+    MPI_Comm col_comm;
+    MPI_Cart_sub(comm, belongs, &col_comm);
+
+    MPI_Barrier(comm);
 
     if (coords[1] == 0) {
+        // Sizes of local_vectors might differ by 1, so use Gatherv
+        // Calculate recvcounts and displs
+        int recvcounts[dims[0]], displs[dims[0]];
 
-        // Compute the number of elements to send to each processor
-        int* recvcounts = new int[dims[0]];
-        int* displs = new int[dims[0]];
-
-        for (int i = 0; i < dims[0]; i++) {
-            recvcounts[i] = block_decompose(n, dims[0], i);
-        }
-
+        recvcounts[0] = block_decompose(n, dims[0], 0);
         displs[0] = 0;
+
         for (int i = 1; i < dims[0]; i++) {
-            displs[i] = displs[i - 1] + recvcounts[i - 1];
+            recvcounts[i] = block_decompose(n, dims[0], i);
+            displs[i] = displs[i-1] + recvcounts[i-1];
         }
 
-        // Compute local size for processors in the first column
-        int local_size = recvcounts[coords[0]];
+        // // Get rank of processor (0, 0)
+        // int root;
+        // int root_coords[] = {0};
+        // MPI_Cart_rank(col_comm, coords, &root);
 
-        // Get the rank of root in the first column communicator
-        int root_rank;
-        int root_coords[] = {0};
-        MPI_Cart_rank(comm_col, root_coords, &root_rank);
-
-        // Gather values from different processors
-        MPI_Gatherv(local_vector, local_size, MPI_DOUBLE, output_vector, recvcounts, displs, MPI_DOUBLE, root_rank, comm_col);
-
-        delete [] recvcounts;
-        delete [] displs;
+        MPI_Gatherv(local_vector, recvcounts[coords[0]], MPI_DOUBLE, output_vector, recvcounts, displs, MPI_DOUBLE, 0, col_comm);
 
     }
 
-    // // Free the column communicator
-    // MPI_Comm_free(&comm_col);
-
-    return;
+    MPI_Barrier(comm);
+    MPI_Comm_free(&col_comm);
 }
 
-void distribute_matrix(const int n, double* input_matrix, double** local_matrix, MPI_Comm comm) {
-
+void distribute_matrix(const int n, double* input_matrix, double** local_matrix, MPI_Comm comm)
+{
     // Get the Cartesian topology information
     int dims[2], periods[2], coords[2];
     MPI_Cart_get(comm, 2, dims, periods, coords);
@@ -265,8 +221,8 @@ void distribute_matrix(const int n, double* input_matrix, double** local_matrix,
 }
 
 
-void transpose_bcast_vector(const int n, double* col_vector, double* row_vector, MPI_Comm comm) {
-
+void transpose_bcast_vector(const int n, double* col_vector, double* row_vector, MPI_Comm comm)
+{
     //get the rank original rank
     int rank;
     MPI_Comm_rank(comm, &rank);
@@ -304,12 +260,11 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
     //broadcast the vector within the column
     int bcount = block_decompose(n, q, col_rank);
     MPI_Bcast(row_vector, bcount, MPI_DOUBLE, col_rank, comm_col);
-
 }
 
 
-void distributed_matrix_vector_mult(const int n, double* local_A, double* local_x, double* local_y, MPI_Comm comm) {
-
+void distributed_matrix_vector_mult(const int n, double* local_A, double* local_x, double* local_y, MPI_Comm comm)
+{
     // Get the Cartesian topology information
     int dims[2], periods[2], coords[2];
     MPI_Cart_get(comm, 2, dims, periods, coords);
@@ -350,13 +305,12 @@ void distributed_matrix_vector_mult(const int n, double* local_A, double* local_
     delete [] local_yy;
 
     return;
-
 }
 
 // Solves Ax = b using the iterative jacobi method
 void distributed_jacobi(const int n, double* local_A, double* local_b, double* local_x,
-                MPI_Comm comm, int max_iter, double l2_termination) {
-
+                MPI_Comm comm, int max_iter, double l2_termination)
+{
     // Get the Cartesian topology information
     int dims[2], periods[2], coords[2];
     MPI_Cart_get(comm, 2, dims, periods, coords);
@@ -452,6 +406,7 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
 
     delete [] local_D;
     delete [] local_R;
+
 }
 
 
